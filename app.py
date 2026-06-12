@@ -92,7 +92,8 @@ def upload_to_oss(file_stream, filename):
     auth   = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
     bucket = oss2.Bucket(auth, f'https://{OSS_ENDPOINT}', OSS_BUCKET_NAME)
     object_key = f'fitness-checkin/{filename}'
-    bucket.put_object(object_key, file_stream)
+    bucket.put_object(object_key, file_stream,
+                      headers={'x-oss-object-acl': 'public-read'})
     return f'https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}'
 
 
