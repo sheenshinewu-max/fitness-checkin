@@ -2,6 +2,17 @@
 {% block title %}今日打卡 💪{% endblock %}
 {% block head %}
 <style>
+  /* campaign banner */
+  .campaign-banner {
+    background: linear-gradient(135deg, #1e40af, #3b82f6);
+    color: #fff; border-radius: 14px; padding: 16px 20px;
+    margin-bottom: 16px; box-shadow: 0 4px 14px rgba(59,130,246,.3);
+  }
+  .cb-name { font-size: 1rem; font-weight: 800; margin-bottom: 4px; }
+  .cb-sub  { font-size: .8rem; opacity: .85; margin-bottom: 10px; }
+  .cb-track { background: rgba(255,255,255,.2); border-radius: 99px; height: 6px; overflow: hidden; }
+  .cb-fill  { background: #fff; height: 100%; border-radius: 99px; transition: width .4s; }
+
   /* urgency banner */
   .urgency-banner {
     background: linear-gradient(135deg, #ef4444, #f97316);
@@ -126,6 +137,21 @@
 {% endblock %}
 {% block content %}
 
+{% if campaign_info %}
+<div class="campaign-banner">
+  <div class="cb-left">
+    <div class="cb-name">🎯 {{ campaign_info.name }}</div>
+    <div class="cb-sub">
+      第 {{ campaign_info.elapsed }} 天 / 共 {{ campaign_info.total_days }} 天
+      · 还剩 <strong>{{ campaign_info.remaining }}</strong> 天
+    </div>
+    <div class="cb-track">
+      <div class="cb-fill" style="width:{{ ((campaign_info.elapsed / campaign_info.total_days) * 100)|round|int }}%;"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if urgency %}
 <div class="urgency-banner">
   <span class="bang">🚨</span>
@@ -161,9 +187,9 @@
 <!-- Leaderboard -->
 {% if leaderboard %}
 <div class="lb-card">
-  <div class="lb-title">🏆 本月卷王排行榜
+  <div class="lb-title">🏆 {% if campaign_info %}{{ campaign_info.name }}卷王榜{% else %}本月卷王排行榜{% endif %}
     <span style="font-size:.75rem;font-weight:400;color:rgba(255,255,255,.3);margin-left:auto;">
-      {{ today[:7] }}
+      {% if campaign_info %}{{ campaign_info.start_date }} ~ {{ campaign_info.end_date }}{% else %}{{ today[:7] }}{% endif %}
     </span>
   </div>
   <ul class="lb-list">

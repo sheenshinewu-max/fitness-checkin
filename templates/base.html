@@ -97,6 +97,9 @@
     <a class="nav-brand" href="/"><span>🏋️</span> 健身打卡</a>
     <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">今日</a>
     <a class="nav-link {% if request.path == '/calendar' %}active{% endif %}" href="/calendar">日历</a>
+    {% if session.username == '五花' %}
+    <a class="nav-link {% if request.path == '/admin' %}active{% endif %}" href="/admin">⚙️ 管理</a>
+    {% endif %}
     <span class="nav-user">{{ session.username }}</span>
     <a class="nav-logout" href="/logout">退出</a>
   </div>

@@ -60,13 +60,14 @@ OSS_BUCKET_NAME       = os.environ.get('OSS_BUCKET_NAME')
 OSS_ENDPOINT          = os.environ.get('OSS_ENDPOINT')
 
 TAGS = ['有氧', '无氧', '练背', '练臀', '练臂', '练核心', '练腿', '练斜方肌']
-
 INVITE_CODES = ["我要是不坚持我就反弹", "boom666"]
+ADMIN_USERNAME = '五花'
 
+
+# ── DB helpers ──────────────────────────────────────────────────────────────
 
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    return conn
+    return psycopg2.connect(DATABASE_URL)
 
 
 def query(sql, params=(), one=False):
@@ -86,15 +87,6 @@ def execute(sql, params=()):
     conn.commit()
     cur.close()
     conn.close()
-
-
-def upload_to_oss(file_stream, filename):
-    auth   = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
-    bucket = oss2.Bucket(auth, f'https://{OSS_ENDPOINT}', OSS_BUCKET_NAME)
-    object_key = f'fitness-checkin/{filename}'
-    bucket.put_object(object_key, file_stream,
-                      headers={'x-oss-object-acl': 'public-read'})
-    return f'https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}'
 
 
 def init_db():
@@ -120,13 +112,40 @@ def init_db():
             UNIQUE(user_id, date)
         )
     ''')
+    cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT ''")
     cur.execute('''
-        ALTER TABLE checkins ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT ''
+        CREATE TABLE IF NOT EXISTS campaigns (
+            id         SERIAL PRIMARY KEY,
+            name       TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date   TEXT NOT NULL,
+            status     TEXT NOT NULL DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     ''')
     conn.commit()
     cur.close()
     conn.close()
 
+
+# ── Campaign helpers ─────────────────────────────────────────────────────────
+
+def get_active_campaign():
+    today = date.today().isoformat()
+    execute(
+        "UPDATE campaigns SET status = 'archived' WHERE status = 'active' AND end_date < %s",
+        (today,)
+    )
+    return query("SELECT * FROM campaigns WHERE status = 'active' LIMIT 1", one=True)
+
+
+def campaign_date_range(campaign):
+    """Return (start, end_capped) strings for a campaign, end capped at today."""
+    today = date.today().isoformat()
+    return campaign['start_date'], min(campaign['end_date'], today)
+
+
+# ── Auth decorators ──────────────────────────────────────────────────────────
 
 def login_required(f):
     @functools.wraps(f)
@@ -137,36 +156,71 @@ def login_required(f):
     return wrapper
 
 
+def admin_required(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if session.get('username') != ADMIN_USERNAME:
+            flash('没有权限，你是谁？ 🤨', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return wrapper
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def get_streak(user_id):
-    rows = query(
-        'SELECT date FROM checkins WHERE user_id = %s ORDER BY date DESC',
-        (user_id,)
-    )
+# ── Streak ───────────────────────────────────────────────────────────────────
+
+def get_streak(user_id, start_date=None, end_date=None):
+    today = date.today()
+    if start_date and end_date:
+        cap = min(end_date, today.isoformat())
+        rows = query(
+            'SELECT date FROM checkins WHERE user_id = %s AND date >= %s AND date <= %s',
+            (user_id, start_date, cap)
+        )
+    else:
+        rows = query('SELECT date FROM checkins WHERE user_id = %s', (user_id,))
     if not rows:
         return 0
     dates = {r['date'] for r in rows}
-    today = date.today()
-    check = today if today.isoformat() in dates else today - timedelta(days=1)
+    cap_date = date.fromisoformat(min(end_date, today.isoformat())) if end_date else today
+    min_date = date.fromisoformat(start_date) if start_date else None
+    check = cap_date if cap_date.isoformat() in dates else cap_date - timedelta(days=1)
     streak = 0
     while check.isoformat() in dates:
+        if min_date and check < min_date:
+            break
         streak += 1
         check -= timedelta(days=1)
     return streak
 
 
+# ── OSS ──────────────────────────────────────────────────────────────────────
+
+def upload_to_oss(file_stream, filename):
+    auth   = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
+    bucket = oss2.Bucket(auth, f'https://{OSS_ENDPOINT}', OSS_BUCKET_NAME)
+    object_key = f'fitness-checkin/{filename}'
+    bucket.put_object(object_key, file_stream,
+                      headers={'x-oss-object-acl': 'public-read'})
+    return f'https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}'
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
 @app.route('/')
 @login_required
 def index():
     today = date.today().isoformat()
+    campaign = get_active_campaign()
+
     my_checkin = query(
         'SELECT * FROM checkins WHERE user_id = %s AND date = %s',
         (session['user_id'], today), one=True
     )
-    all_users = query('SELECT id, username FROM users ORDER BY username')
+    all_users    = query('SELECT id, username FROM users ORDER BY username')
     today_checkins = query(
         '''SELECT c.*, u.username FROM checkins c
            JOIN users u ON c.user_id = u.id
@@ -175,17 +229,42 @@ def index():
     )
     checked_ids = {r['user_id'] for r in today_checkins}
     not_checked = [u for u in all_users if u['id'] not in checked_ids]
-    streak = get_streak(session['user_id'])
 
-    month_prefix = date.today().strftime('%Y-%m-')
-    leaderboard_rows = query(
-        '''SELECT u.id, u.username, COUNT(c.id) as cnt
-           FROM users u
-           LEFT JOIN checkins c ON u.id = c.user_id AND c.date LIKE %s
-           GROUP BY u.id, u.username
-           ORDER BY cnt DESC, u.username ASC''',
-        (month_prefix + '%',)
-    )
+    # Streak & leaderboard: scoped to campaign or all-time
+    if campaign:
+        s, e = campaign_date_range(campaign)
+        streak = get_streak(session['user_id'], s, e)
+        leaderboard_rows = query(
+            '''SELECT u.id, u.username, COUNT(c.id) as cnt
+               FROM users u
+               LEFT JOIN checkins c ON u.id = c.user_id
+                   AND c.date >= %s AND c.date <= %s
+               GROUP BY u.id, u.username
+               ORDER BY cnt DESC, u.username ASC''',
+            (s, e)
+        )
+        # remaining days
+        remaining = (date.fromisoformat(campaign['end_date']) - date.today()).days
+        total_days = (date.fromisoformat(campaign['end_date']) -
+                      date.fromisoformat(campaign['start_date'])).days + 1
+        elapsed    = (date.today() - date.fromisoformat(campaign['start_date'])).days + 1
+        campaign_info = dict(campaign) | {
+            'remaining': max(0, remaining),
+            'total_days': total_days,
+            'elapsed': min(elapsed, total_days),
+        }
+    else:
+        streak = get_streak(session['user_id'])
+        month_prefix = date.today().strftime('%Y-%m-')
+        leaderboard_rows = query(
+            '''SELECT u.id, u.username, COUNT(c.id) as cnt
+               FROM users u
+               LEFT JOIN checkins c ON u.id = c.user_id AND c.date LIKE %s
+               GROUP BY u.id, u.username
+               ORDER BY cnt DESC, u.username ASC''',
+            (month_prefix + '%',)
+        )
+        campaign_info = None
 
     leaderboard = [dict(r) for r in leaderboard_rows]
     if leaderboard:
@@ -198,8 +277,7 @@ def index():
 
     urgency = None
     if not my_checkin and today_checkins:
-        first_name = today_checkins[0]['username']
-        urgency = random.choice(URGENCY_BANNER).format(name=first_name)
+        urgency = random.choice(URGENCY_BANNER).format(name=today_checkins[0]['username'])
 
     return render_template('index.html',
                            my_checkin=my_checkin,
@@ -209,22 +287,22 @@ def index():
                            today=today,
                            all_tags=TAGS,
                            urgency=urgency,
-                           leaderboard=leaderboard)
+                           leaderboard=leaderboard,
+                           campaign=campaign_info)
 
 
 @app.route('/checkin', methods=['POST'])
 @login_required
 def checkin():
     today = date.today().isoformat()
-    note = request.form.get('note', '').strip()
+    note  = request.form.get('note', '').strip()
     selected_tags = [t for t in request.form.getlist('tags') if t in TAGS]
-    tags = ','.join(selected_tags)
+    tags  = ','.join(selected_tags)
     image_path = None
     file = request.files.get('image')
     if file and file.filename and allowed_file(file.filename):
         ext = file.filename.rsplit('.', 1)[1].lower()
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        image_path = upload_to_oss(file.stream, filename)
+        image_path = upload_to_oss(file.stream, f"{uuid.uuid4().hex}.{ext}")
     try:
         execute(
             'INSERT INTO checkins (user_id, date, note, image_path, tags) VALUES (%s, %s, %s, %s, %s)',
@@ -245,7 +323,6 @@ def calendar_view():
         month, year = 12, year - 1
     elif month > 12:
         month, year = 1, year + 1
-
     rows = query(
         "SELECT date, tags FROM checkins WHERE user_id = %s AND date LIKE %s",
         (session['user_id'], f'{year}-{month:02d}-%')
@@ -254,11 +331,9 @@ def calendar_view():
     day_tags = {int(r['date'].split('-')[2]): [t for t in (r['tags'] or '').split(',') if t]
                 for r in rows}
     month_matrix = cal_module.monthcalendar(year, month)
-    streak = get_streak(session['user_id'])
-    total_row = query(
-        'SELECT COUNT(*) as cnt FROM checkins WHERE user_id = %s',
-        (session['user_id'],), one=True
-    )
+    streak    = get_streak(session['user_id'])
+    total_row = query('SELECT COUNT(*) as cnt FROM checkins WHERE user_id = %s',
+                      (session['user_id'],), one=True)
     total = total_row['cnt'] if total_row else 0
     month_name = cal_module.month_name[month]
     prev_month = month - 1 if month > 1 else 12
@@ -268,12 +343,46 @@ def calendar_view():
     return render_template('calendar.html',
                            year=year, month=month, month_name=month_name,
                            month_matrix=month_matrix,
-                           checked_days=checked_days,
-                           day_tags=day_tags,
-                           streak=streak, total=total,
-                           today=date.today(),
+                           checked_days=checked_days, day_tags=day_tags,
+                           streak=streak, total=total, today=date.today(),
                            prev_month=prev_month, prev_year=prev_year,
                            next_month=next_month, next_year=next_year)
+
+
+@app.route('/admin', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin():
+    if request.method == 'POST':
+        name     = request.form.get('name', '').strip()
+        duration = request.form.get('duration', '').strip()
+        if not name or not duration.isdigit() or int(duration) < 1:
+            flash('请填写活动名称和有效天数', 'error')
+        else:
+            active = query("SELECT id FROM campaigns WHERE status = 'active' LIMIT 1", one=True)
+            if active:
+                flash('当前已有进行中的活动，请先结束后再创建', 'error')
+            else:
+                start = date.today()
+                end   = start + timedelta(days=int(duration) - 1)
+                execute(
+                    "INSERT INTO campaigns (name, start_date, end_date, status) VALUES (%s, %s, %s, 'active')",
+                    (name, start.isoformat(), end.isoformat())
+                )
+                flash(f'活动「{name}」已创建，共 {duration} 天，加油！🔥', 'success')
+        return redirect(url_for('admin'))
+
+    campaigns = query("SELECT * FROM campaigns ORDER BY created_at DESC")
+    return render_template('admin.html', campaigns=campaigns)
+
+
+@app.route('/admin/campaign/<int:cid>/archive', methods=['POST'])
+@login_required
+@admin_required
+def archive_campaign(cid):
+    execute("UPDATE campaigns SET status = 'archived' WHERE id = %s", (cid,))
+    flash('活动已手动归档', 'success')
+    return redirect(url_for('admin'))
 
 
 @app.route('/register', methods=['GET', 'POST'])

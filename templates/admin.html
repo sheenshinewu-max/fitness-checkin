@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}活动管理 — 健身打卡{% endblock %}
+{% block head %}
+<style>
+  .admin-section { margin-bottom: 28px; }
+  .campaign-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+                   border-radius: 12px; background: var(--gray-50); margin-bottom: 10px; }
+  .campaign-item.active { background: var(--green-bg); border: 1.5px solid var(--green-border); }
+  .campaign-item.archived { opacity: .6; }
+  .campaign-meta { flex: 1; min-width: 0; }
+  .campaign-name { font-size: .95rem; font-weight: 700; color: var(--gray-800); }
+  .campaign-dates { font-size: .78rem; color: var(--gray-400); margin-top: 2px; }
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 20px;
+                  font-size: .75rem; font-weight: 700; }
+  .status-active   { background: var(--green-bg); color: var(--green); }
+  .status-archived { background: var(--gray-100); color: var(--gray-400); }
+  .archive-btn { padding: 5px 14px; border-radius: 8px; border: 1px solid var(--gray-200);
+                 font-size: .78rem; font-weight: 600; color: var(--gray-600);
+                 background: #fff; cursor: pointer; transition: border-color .15s, color .15s;
+                 text-decoration: none; flex-shrink: 0; }
+  .archive-btn:hover { border-color: var(--red); color: var(--red); }
+  .empty-hint { text-align: center; padding: 24px; color: var(--gray-400); font-size: .875rem; }
+</style>
+{% endblock %}
+{% block content %}
+<h2 style="font-size:1.2rem;font-weight:800;margin-bottom:24px;">⚙️ 活动管理</h2>
+
+<div class="admin-section">
+  <div class="card">
+    <div class="card-title">➕ 创建新活动</div>
+    <form method="post">
+      <div class="form-group">
+        <label class="form-label">活动名称</label>
+        <input class="form-input" type="text" name="name" placeholder="例：五月健身挑战赛" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">持续天数</label>
+        <input class="form-input" type="number" name="days" min="1" max="365" placeholder="例：30" required>
+      </div>
+      <button class="btn btn-primary" type="submit">🚀 创建活动</button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-section">
+  <div class="card">
+    <div class="card-title">📋 活动列表</div>
+    {% if campaigns %}
+      {% for c in campaigns %}
+      <div class="campaign-item {% if c.status == 'active' %}active{% else %}archived{% endif %}">
+        <div class="campaign-meta">
+          <div class="campaign-name">
+            {{ c.name }}
+            <span class="status-badge status-{{ c.status }}">
+              {% if c.status == 'active' %}进行中{% else %}已归档{% endif %}
+            </span>
+          </div>
+          <div class="campaign-dates">{{ c.start_date }} → {{ c.end_date }}</div>
+        </div>
+        {% if c.status == 'active' %}
+        <a class="archive-btn"
+           href="/admin/campaign/{{ c.id }}/archive"
+           onclick="return confirm('确认归档此活动？')">归档</a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-hint">还没有任何活动，快去创建第一个吧！</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
