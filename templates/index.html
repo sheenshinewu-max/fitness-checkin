@@ -137,16 +137,16 @@
 {% endblock %}
 {% block content %}
 
-{% if campaign_info %}
+{% if campaign %}
 <div class="campaign-banner">
   <div class="cb-left">
-    <div class="cb-name">🎯 {{ campaign_info.name }}</div>
+    <div class="cb-name">🎯 {{ campaign.name }}</div>
     <div class="cb-sub">
-      第 {{ campaign_info.elapsed }} 天 / 共 {{ campaign_info.total_days }} 天
-      · 还剩 <strong>{{ campaign_info.remaining }}</strong> 天
+      第 {{ campaign.elapsed }} 天 / 共 {{ campaign.total_days }} 天
+      · 还剩 <strong>{{ campaign.remaining }}</strong> 天
     </div>
     <div class="cb-track">
-      <div class="cb-fill" style="width:{{ ((campaign_info.elapsed / campaign_info.total_days) * 100)|round|int }}%;"></div>
+      <div class="cb-fill" style="width:{{ ((campaign.elapsed / campaign.total_days) * 100)|round|int }}%;"></div>
     </div>
   </div>
 </div>
@@ -187,9 +187,9 @@
 <!-- Leaderboard -->
 {% if leaderboard %}
 <div class="lb-card">
-  <div class="lb-title">🏆 {% if campaign_info %}{{ campaign_info.name }}卷王榜{% else %}本月卷王排行榜{% endif %}
+  <div class="lb-title">🏆 {% if campaign %}{{ campaign.name }}卷王榜{% else %}本月卷王排行榜{% endif %}
     <span style="font-size:.75rem;font-weight:400;color:rgba(255,255,255,.3);margin-left:auto;">
-      {% if campaign_info %}{{ campaign_info.start_date }} ~ {{ campaign_info.end_date }}{% else %}{{ today[:7] }}{% endif %}
+      {% if campaign %}{{ campaign.start_date }} ~ {{ campaign.end_date }}{% else %}{{ today[:7] }}{% endif %}
     </span>
   </div>
   <ul class="lb-list">
