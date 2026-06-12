@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}注册 — 健身打卡{% endblock %}
+{% block head %}
+<style>
+  body { display: flex; align-items: center; justify-content: center; }
+  .main { width: 100%; max-width: 400px; }
+  .auth-header { text-align: center; margin-bottom: 28px; }
+  .auth-header .icon { font-size: 3rem; display: block; margin-bottom: 10px; }
+  .auth-header h1 { font-size: 1.5rem; font-weight: 700; }
+  .auth-header p { color: var(--gray-400); font-size: .9rem; margin-top: 4px; }
+  .auth-footer { text-align: center; margin-top: 16px; font-size: .875rem; color: var(--gray-400); }
+  .auth-footer a { color: var(--green); text-decoration: none; font-weight: 500; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="auth-header">
+  <span class="icon">🌱</span>
+  <h1>创建账号</h1>
+  <p>开始你的打卡之旅</p>
+</div>
+<div class="card">
+  <form method="post">
+    <div class="form-group">
+      <label class="form-label">用户名</label>
+      <input class="form-input" type="text" name="username" placeholder="设置用户名" required autofocus>
+    </div>
+    <div class="form-group">
+      <label class="form-label">密码</label>
+      <input class="form-input" type="password" name="password" placeholder="设置密码" required>
+    </div>
+    <button class="btn btn-primary btn-full" type="submit">注册</button>
+  </form>
+</div>
+<p class="auth-footer">已有账号？<a href="/login">去登录</a></p>
+{% endblock %}

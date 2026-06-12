@@ -1,0 +1,8 @@
+fitness.db
+static/uploads/*
+!static/uploads/.gitkeep
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store

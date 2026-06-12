@@ -1,0 +1,352 @@
+{% extends 'base.html' %}
+{% block title %}今日打卡 💪{% endblock %}
+{% block head %}
+<style>
+  /* urgency banner */
+  .urgency-banner {
+    background: linear-gradient(135deg, #ef4444, #f97316);
+    color: #fff; border-radius: 14px; padding: 14px 20px;
+    margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
+    font-size: .95rem; font-weight: 700; box-shadow: 0 4px 14px rgba(239,68,68,.35);
+    animation: pulse-banner 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse-banner {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.01); }
+  }
+  .urgency-banner .bang { font-size: 1.5rem; }
+
+  /* stats — 始终一行三等份，内容随屏幕等比缩放 */
+  .top-row { display: grid; grid-template-columns: repeat(3, 1fr);
+             gap: clamp(6px, 2vw, 16px); margin-bottom: 20px; }
+  .stat-card { background: #fff; border-radius: clamp(8px, 2vw, 14px);
+               box-shadow: var(--shadow);
+               padding: clamp(10px, 3vw, 20px); text-align: center; min-width: 0; }
+  .stat-icon { font-size: clamp(1.2rem, 4vw, 1.8rem); margin-bottom: 4px; }
+  .stat-val  { font-size: clamp(1.1rem, 5vw, 1.8rem); font-weight: 800;
+               color: var(--green); line-height: 1; }
+  .stat-val.broken { color: #ef4444; }
+  .stat-lbl  { font-size: clamp(.6rem, 1.8vw, .8rem); color: var(--gray-400);
+               margin-top: 4px; line-height: 1.3; }
+  .streak-flame { font-size: clamp(1.3rem, 4.5vw, 2rem); line-height: 1; display: block; }
+
+  /* checkin form */
+  .checkin-done {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1.5px solid var(--green-border); border-radius: 14px; padding: 18px;
+  }
+  .checkin-done-top { display: flex; align-items: center; gap: 10px; }
+  .checkin-done-top .big-check { font-size: 2rem; }
+  .checkin-done-title { font-size: 1rem; font-weight: 800; color: var(--green); }
+  .checkin-done-sub   { font-size: .82rem; color: var(--gray-600); margin-top: 2px; }
+
+  .upload-label { display: flex; align-items: center; gap: 8px; cursor: pointer;
+                  border: 1.5px dashed var(--gray-200); border-radius: 10px; padding: 12px 16px;
+                  transition: border-color .15s; font-size: .875rem; color: var(--gray-400); }
+  .upload-label:hover { border-color: var(--green); color: var(--green); }
+  #image-input { display: none; }
+  #preview-wrap { margin-top: 10px; display: none; }
+  #preview-wrap img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; }
+
+  /* tags */
+  .tag-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag-chip input[type=checkbox] { display: none; }
+  .tag-chip label { display: inline-flex; align-items: center; gap: 4px;
+                    padding: 5px 12px; border-radius: 20px; font-size: .8rem; font-weight: 600;
+                    cursor: pointer; border: 1.5px solid var(--gray-200);
+                    background: #fff; color: var(--gray-600);
+                    transition: all .15s; user-select: none; }
+  .tag-chip label:hover { border-color: var(--green); color: var(--green); }
+  .tag-chip input:checked + label { background: var(--green); color: #fff; border-color: var(--green); }
+  .tag-badge { display: inline-block; padding: 2px 9px; border-radius: 20px;
+               font-size: .75rem; font-weight: 600;
+               background: var(--green-bg); color: var(--green); margin: 2px 2px 0 0; }
+  .tag-list { display: flex; flex-wrap: wrap; margin-top: 4px; }
+
+  /* user lists */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+  .user-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .user-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px;
+               border-radius: 12px; background: var(--gray-50); }
+  .user-item.checked { background: var(--green-bg); }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--green);
+            display: flex; align-items: center; justify-content: center;
+            font-size: .95rem; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .avatar.gray { background: var(--gray-200); color: var(--gray-500); }
+  .user-info { flex: 1; min-width: 0; }
+  .user-name { font-size: .9rem; font-weight: 700; }
+  .user-praise { font-size: .78rem; font-weight: 700; color: var(--green); margin-top: 1px; }
+  .user-taunt  { font-size: .78rem; font-weight: 700; color: #f97316; margin-top: 1px; }
+  .user-note   { font-size: .8rem; color: var(--gray-600); margin-top: 3px; word-break: break-word; }
+  .checkin-img { margin-top: 8px; width: 100%; max-height: 160px;
+                 object-fit: cover; border-radius: 8px; cursor: pointer; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .75rem; font-weight: 700; }
+  .badge-green { background: var(--green-bg); color: var(--green); }
+  .badge-gray  { background: var(--gray-100); color: var(--gray-400); }
+  .badge-red   { background: #fee2e2; color: #ef4444; }
+
+  /* card title funny */
+  .card-title { font-size: 1rem; font-weight: 700; color: var(--gray-800); margin-bottom: 16px;
+                display: flex; align-items: center; gap: 6px; }
+
+  /* all done party */
+  .party-box { text-align: center; padding: 20px; font-size: .95rem; color: var(--green); font-weight: 700; }
+  .party-box .party-emoji { font-size: 2.4rem; display: block; margin-bottom: 6px; }
+
+  /* leaderboard */
+  .lb-card { background: linear-gradient(135deg, #1f2937, #111827); border-radius: 16px;
+             padding: 22px; margin-bottom: 20px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  .lb-title { font-size: 1rem; font-weight: 800; color: #fbbf24; margin-bottom: 18px;
+              display: flex; align-items: center; gap: 8px; letter-spacing: .03em; }
+  .lb-list  { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .lb-item  { display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+              border-radius: 12px; background: rgba(255,255,255,.06); }
+  .lb-item.rank-1 { background: linear-gradient(90deg,rgba(251,191,36,.18),rgba(251,191,36,.05)); }
+  .lb-item.rank-2 { background: linear-gradient(90deg,rgba(156,163,175,.15),rgba(156,163,175,.04)); }
+  .lb-item.rank-3 { background: linear-gradient(90deg,rgba(180,120,60,.18),rgba(180,120,60,.04)); }
+  .lb-medal { font-size: 1.4rem; width: 28px; text-align: center; flex-shrink: 0; }
+  .lb-rank-num { width: 28px; text-align: center; font-size: .9rem; font-weight: 700;
+                 color: rgba(255,255,255,.35); flex-shrink: 0; }
+  .lb-name  { flex: 1; font-size: .92rem; font-weight: 700; color: #f9fafb; }
+  .lb-caption { font-size: .72rem; color: rgba(255,255,255,.45); margin-top: 1px; }
+  .lb-count { font-size: 1.1rem; font-weight: 800; color: #4ade80; white-space: nowrap; }
+  .lb-count span { font-size: .72rem; font-weight: 400; color: rgba(255,255,255,.4); }
+  .lb-month { font-size: .75rem; color: rgba(255,255,255,.3); margin-left: auto;
+              padding-left: 8px; white-space: nowrap; }
+
+  /* image modal */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
+              z-index: 999; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal-bg img { max-width: 90vw; max-height: 90vh; border-radius: 12px; }
+</style>
+{% endblock %}
+{% block content %}
+
+{% if urgency %}
+<div class="urgency-banner">
+  <span class="bang">🚨</span>
+  <span>{{ urgency }}</span>
+</div>
+{% endif %}
+
+<!-- Stats row -->
+<div class="top-row">
+  <div class="stat-card">
+    {% if streak > 0 %}
+      <span class="streak-flame">🔥</span>
+      <div class="stat-val">{{ streak }}</div>
+      <div class="stat-lbl">天连续打卡，卷不停！</div>
+    {% else %}
+      <span class="streak-flame">💔</span>
+      <div class="stat-val broken">0</div>
+      <div class="stat-lbl">断了……重头再来吧</div>
+    {% endif %}
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">💪</div>
+    <div class="stat-val">{{ today_checkins|length }}</div>
+    <div class="stat-lbl">人已经在卷了</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🛋️</div>
+    <div class="stat-val" style="color:#f97316;">{{ not_checked|length }}</div>
+    <div class="stat-lbl">条咸鱼尚未上岸</div>
+  </div>
+</div>
+
+<!-- Leaderboard -->
+{% if leaderboard %}
+<div class="lb-card">
+  <div class="lb-title">🏆 本月卷王排行榜
+    <span style="font-size:.75rem;font-weight:400;color:rgba(255,255,255,.3);margin-left:auto;">
+      {{ today[:7] }}
+    </span>
+  </div>
+  <ul class="lb-list">
+    {% for item in leaderboard %}
+    {% set idx = loop.index %}
+    <li class="lb-item {% if idx == 1 %}rank-1{% elif idx == 2 %}rank-2{% elif idx == 3 %}rank-3{% endif %}">
+      {% if idx == 1 %}
+        <span class="lb-medal">👑</span>
+      {% elif idx == 2 %}
+        <span class="lb-medal">🥈</span>
+      {% elif idx == 3 %}
+        <span class="lb-medal">🥉</span>
+      {% else %}
+        <span class="lb-rank-num">{{ idx }}</span>
+      {% endif %}
+      <div style="flex:1;min-width:0;">
+        <div class="lb-name">{{ item.username }}
+          {% if item.id == session.user_id %}
+            <span style="font-size:.7rem;color:#4ade80;font-weight:400;"> ← 你</span>
+          {% endif %}
+        </div>
+        {% if item.caption %}
+          <div class="lb-caption">{{ item.caption }}</div>
+        {% endif %}
+      </div>
+      <div class="lb-count">{{ item.cnt }} <span>天</span></div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Check-in form -->
+<div class="card">
+  <div class="card-title">📅 今日打卡
+    <small style="font-weight:400;color:var(--gray-400);font-size:.85rem;">{{ today }}</small>
+  </div>
+  {% if my_checkin %}
+    <div class="checkin-done">
+      <div class="checkin-done-top">
+        <span class="big-check">🏆</span>
+        <div>
+          <div class="checkin-done-title">今日份卷已完成！你就是传说中的卷王！</div>
+          {% if my_checkin.note %}
+            <div class="checkin-done-sub">💬 {{ my_checkin.note }}</div>
+          {% endif %}
+          {% if my_checkin.tags %}
+            <div class="tag-list" style="margin-top:6px;">
+              {% for t in my_checkin.tags.split(',') if t %}
+                <span class="tag-badge">{{ t }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% if my_checkin.image_path %}
+        <img src="{{ url_for('static', filename=my_checkin.image_path) }}"
+             style="margin-top:14px;width:100%;max-height:240px;object-fit:cover;border-radius:12px;">
+      {% endif %}
+    </div>
+  {% else %}
+    <p style="font-size:.875rem;color:#f97316;font-weight:700;margin-bottom:14px;">
+      😤 你还没打卡！脂肪都快笑出腹肌了！
+    </p>
+    <form method="post" action="/checkin" enctype="multipart/form-data">
+      <div class="form-group">
+        <label class="form-label">训练标签（可多选）</label>
+        <div class="tag-row">
+          {% for tag in all_tags %}
+          <span class="tag-chip">
+            <input type="checkbox" name="tags" value="{{ tag }}" id="tag-{{ loop.index }}">
+            <label for="tag-{{ loop.index }}">{{ tag }}</label>
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">打卡内容（可选，吹牛皮专区）</label>
+        <textarea class="form-input" name="note" placeholder="今天练了啥？轻描淡写or疯狂凡尔赛都行…"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">现场图（可选，晒成果/晒器械/晒汗水）</label>
+        <label class="upload-label" for="image-input">
+          <span>📷</span> 点击上传照片
+        </label>
+        <input id="image-input" type="file" name="image" accept="image/*">
+        <div id="preview-wrap"><img id="preview-img" src="" alt="预览"></div>
+      </div>
+      <button class="btn btn-primary btn-full" type="submit">🔥 打卡！让脂肪颤抖！</button>
+    </form>
+  {% endif %}
+</div>
+
+<!-- Today's status -->
+<div class="two-col">
+  <div class="card">
+    <div class="card-title">
+      🏅 卷王榜
+      <span class="badge badge-green">{{ today_checkins|length }}</span>
+    </div>
+    {% if today_checkins %}
+      <ul class="user-list">
+        {% for c in today_checkins %}
+        <li class="user-item checked">
+          <div class="avatar">{{ c.username[0]|upper }}</div>
+          <div class="user-info">
+            <div class="user-name">{{ c.username }}</div>
+            <div class="user-praise">{{ c.praise }}</div>
+            {% if c.tags %}
+              <div class="tag-list">
+                {% for t in c.tags.split(',') if t %}
+                  <span class="tag-badge">{{ t }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if c.note %}
+              <div class="user-note">💬 {{ c.note }}</div>
+            {% endif %}
+            {% if c.image_path %}
+              <img class="checkin-img"
+                   src="{{ url_for('static', filename=c.image_path) }}"
+                   onclick="openModal(this.src)" alt="打卡图片">
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p style="color:var(--gray-400);font-size:.875rem;text-align:center;padding:20px 0;">
+        😶 空空如也……大家都在睡吗
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      🛋️ 咸鱼池
+      <span class="badge badge-red">{{ not_checked|length }}</span>
+    </div>
+    {% if not_checked %}
+      <ul class="user-list">
+        {% for u in not_checked %}
+        <li class="user-item">
+          <div class="avatar gray">{{ u.username[0]|upper }}</div>
+          <div class="user-info">
+            <div class="user-name">{{ u.username }}</div>
+            <div class="user-taunt">{{ u.taunt }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="party-box">
+        <span class="party-emoji">🎊</span>
+        所有人都打卡了！！<br>
+        <span style="font-size:.85rem;font-weight:400;color:var(--gray-600);">
+          今天全员卷，明天继续！
+        </span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Image modal -->
+<div class="modal-bg" id="modal" onclick="closeModal()">
+  <img id="modal-img" src="" alt="">
+</div>
+
+<script>
+  document.getElementById('image-input').addEventListener('change', function() {
+    const wrap = document.getElementById('preview-wrap');
+    const img  = document.getElementById('preview-img');
+    if (this.files && this.files[0]) {
+      img.src = URL.createObjectURL(this.files[0]);
+      wrap.style.display = 'block';
+    }
+  });
+  function openModal(src) {
+    document.getElementById('modal-img').src = src;
+    document.getElementById('modal').classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+  }
+</script>
+{% endblock %}
