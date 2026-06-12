@@ -27,21 +27,31 @@
 
     /* NAV */
     .nav { background: #fff; border-bottom: 1px solid var(--gray-200); position: sticky; top: 0; z-index: 100; }
-    .nav-inner { max-width: 960px; margin: 0 auto; padding: 0 20px;
-                 display: flex; align-items: center; height: 56px; gap: 8px; }
-    .nav-brand { font-size: 1.1rem; font-weight: 700; color: var(--green);
-                 text-decoration: none; display: flex; align-items: center; gap: 6px; margin-right: auto; }
-    .nav-brand span { font-size: 1.3rem; }
-    .nav-link { padding: 6px 14px; border-radius: 8px; text-decoration: none;
+    .nav-inner { max-width: 960px; margin: 0 auto; padding: 0 16px;
+                 display: flex; align-items: center; height: 52px; gap: 4px;
+                 flex-wrap: nowrap; overflow: hidden; }
+    .nav-brand { font-size: 1rem; font-weight: 700; color: var(--green);
+                 text-decoration: none; display: flex; align-items: center; gap: 5px;
+                 margin-right: auto; white-space: nowrap; flex-shrink: 0; }
+    .nav-brand span { font-size: 1.2rem; }
+    .nav-link { padding: 6px 10px; border-radius: 8px; text-decoration: none;
                 font-size: .875rem; font-weight: 500; color: var(--gray-600);
+                white-space: nowrap; flex-shrink: 0;
                 transition: background .15s, color .15s; }
     .nav-link:hover { background: var(--gray-100); color: var(--gray-800); }
     .nav-link.active { background: var(--green-bg); color: var(--green); }
-    .nav-user { font-size: .8rem; color: var(--gray-400); padding: 0 8px; }
-    .nav-logout { padding: 5px 12px; border-radius: 8px; border: 1px solid var(--gray-200);
-                  text-decoration: none; font-size: .8rem; color: var(--gray-600);
+    .nav-user { font-size: .78rem; color: var(--gray-400); padding: 0 6px;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                max-width: 72px; flex-shrink: 1; }
+    .nav-logout { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--gray-200);
+                  text-decoration: none; font-size: .78rem; color: var(--gray-600);
+                  white-space: nowrap; flex-shrink: 0;
                   transition: border-color .15s, color .15s; }
     .nav-logout:hover { border-color: var(--red); color: var(--red); }
+    @media (max-width: 360px) {
+      .nav-user { display: none; }
+      .nav-link { padding: 6px 8px; font-size: .8rem; }
+    }
 
     /* MAIN */
     .main { max-width: 960px; margin: 0 auto; padding: 28px 20px; }
