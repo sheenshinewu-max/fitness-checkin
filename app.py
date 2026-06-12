@@ -60,6 +60,8 @@ def get_db():
 
 TAGS = ['有氧', '无氧', '练背', '练臀', '练臂', '练核心', '练腿', '练斜方肌']
 
+INVITE_CODES = ["我要是不坚持我就反弹", "boom666"]
+
 
 def init_db():
     db = get_db()
@@ -259,8 +261,12 @@ def register():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password']
+        invite = request.form.get('invite_code', '').strip()
         if not username or not password:
             flash('请填写用户名和密码', 'error')
+            return render_template('register.html')
+        if invite not in INVITE_CODES:
+            flash('邀请码错误，你是怎么知道这里的？ 👀', 'error')
             return render_template('register.html')
         db = get_db()
         try:
