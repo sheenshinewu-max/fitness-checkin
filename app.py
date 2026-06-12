@@ -8,6 +8,7 @@ import uuid
 import calendar as cal_module
 import functools
 import random
+import oss2
 
 CHECKIN_PRAISE = [
     "卷王在此 👑", "肌肉猛男已就位 💪", "今日份卷已完成 ✅",
@@ -47,9 +48,21 @@ RANK_LAST = [
 
 app = Flask(__name__)
 app.secret_key = 'fitness-checkin-secret-2026'
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+OSS_ACCESS_KEY_ID     = os.environ.get('OSS_ACCESS_KEY_ID')
+OSS_ACCESS_KEY_SECRET = os.environ.get('OSS_ACCESS_KEY_SECRET')
+OSS_BUCKET_NAME       = os.environ.get('OSS_BUCKET_NAME')
+OSS_ENDPOINT          = os.environ.get('OSS_ENDPOINT')
+
+
+def upload_to_oss(file_stream, filename):
+    auth   = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
+    bucket = oss2.Bucket(auth, f'https://{OSS_ENDPOINT}', OSS_BUCKET_NAME)
+    object_key = f'fitness-checkin/{filename}'
+    bucket.put_object(object_key, file_stream)
+    return f'https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}'
 
 
 def get_db():
@@ -197,8 +210,7 @@ def checkin():
     if file and file.filename and allowed_file(file.filename):
         ext = file.filename.rsplit('.', 1)[1].lower()
         filename = f"{uuid.uuid4().hex}.{ext}"
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_path = f"uploads/{filename}"
+        image_path = upload_to_oss(file.stream, filename)
     db = get_db()
     try:
         db.execute(
