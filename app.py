@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -51,10 +52,40 @@ app.secret_key = 'fitness-checkin-secret-2026'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
 OSS_ACCESS_KEY_ID     = os.environ.get('OSS_ACCESS_KEY_ID')
 OSS_ACCESS_KEY_SECRET = os.environ.get('OSS_ACCESS_KEY_SECRET')
 OSS_BUCKET_NAME       = os.environ.get('OSS_BUCKET_NAME')
 OSS_ENDPOINT          = os.environ.get('OSS_ENDPOINT')
+
+TAGS = ['有氧', '无氧', '练背', '练臀', '练臂', '练核心', '练腿', '练斜方肌']
+
+INVITE_CODES = ["我要是不坚持我就反弹", "boom666"]
+
+
+def get_db():
+    conn = psycopg2.connect(DATABASE_URL)
+    return conn
+
+
+def query(sql, params=(), one=False):
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(sql, params)
+    result = cur.fetchone() if one else cur.fetchall()
+    cur.close()
+    conn.close()
+    return result
+
+
+def execute(sql, params=()):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 def upload_to_oss(file_stream, filename):
@@ -65,46 +96,35 @@ def upload_to_oss(file_stream, filename):
     return f'https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}'
 
 
-def get_db():
-    db = sqlite3.connect('fitness.db')
-    db.row_factory = sqlite3.Row
-    return db
-
-
-TAGS = ['有氧', '无氧', '练背', '练臀', '练臂', '练核心', '练腿', '练斜方肌']
-
-INVITE_CODES = ["我要是不坚持我就反弹", "boom666"]
-
-
 def init_db():
-    db = get_db()
-    db.executescript('''
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id   INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS checkins (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id  INTEGER NOT NULL,
-            date     TEXT NOT NULL,
-            note     TEXT,
-            image_path TEXT,
-            tags     TEXT DEFAULT "",
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            UNIQUE(user_id, date)
-        );
+            id         SERIAL PRIMARY KEY,
+            username   TEXT UNIQUE NOT NULL,
+            password   TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     ''')
-    db.commit()
-    # migrate existing db
-    try:
-        db.execute('ALTER TABLE checkins ADD COLUMN tags TEXT DEFAULT ""')
-        db.commit()
-    except Exception:
-        pass
-    db.close()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS checkins (
+            id         SERIAL PRIMARY KEY,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            date       TEXT NOT NULL,
+            note       TEXT,
+            image_path TEXT,
+            tags       TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, date)
+        )
+    ''')
+    cur.execute('''
+        ALTER TABLE checkins ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT ''
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 def login_required(f):
@@ -121,12 +141,10 @@ def allowed_file(filename):
 
 
 def get_streak(user_id):
-    db = get_db()
-    rows = db.execute(
-        'SELECT date FROM checkins WHERE user_id = ? ORDER BY date DESC',
+    rows = query(
+        'SELECT date FROM checkins WHERE user_id = %s ORDER BY date DESC',
         (user_id,)
-    ).fetchall()
-    db.close()
+    )
     if not rows:
         return 0
     dates = {r['date'] for r in rows}
@@ -142,34 +160,31 @@ def get_streak(user_id):
 @app.route('/')
 @login_required
 def index():
-    db = get_db()
     today = date.today().isoformat()
-    my_checkin = db.execute(
-        'SELECT * FROM checkins WHERE user_id = ? AND date = ?',
-        (session['user_id'], today)
-    ).fetchone()
-    all_users = db.execute('SELECT id, username FROM users ORDER BY username').fetchall()
-    today_checkins = db.execute(
+    my_checkin = query(
+        'SELECT * FROM checkins WHERE user_id = %s AND date = %s',
+        (session['user_id'], today), one=True
+    )
+    all_users = query('SELECT id, username FROM users ORDER BY username')
+    today_checkins = query(
         '''SELECT c.*, u.username FROM checkins c
            JOIN users u ON c.user_id = u.id
-           WHERE c.date = ? ORDER BY c.created_at ASC''',
+           WHERE c.date = %s ORDER BY c.created_at ASC''',
         (today,)
-    ).fetchall()
+    )
     checked_ids = {r['user_id'] for r in today_checkins}
     not_checked = [u for u in all_users if u['id'] not in checked_ids]
     streak = get_streak(session['user_id'])
 
-    # 本月排行榜
     month_prefix = date.today().strftime('%Y-%m-')
-    leaderboard_rows = db.execute(
+    leaderboard_rows = query(
         '''SELECT u.id, u.username, COUNT(c.id) as cnt
            FROM users u
-           LEFT JOIN checkins c ON u.id = c.user_id AND c.date LIKE ?
+           LEFT JOIN checkins c ON u.id = c.user_id AND c.date LIKE %s
            GROUP BY u.id, u.username
            ORDER BY cnt DESC, u.username ASC''',
         (month_prefix + '%',)
-    ).fetchall()
-    db.close()
+    )
 
     leaderboard = [dict(r) for r in leaderboard_rows]
     if leaderboard:
@@ -177,11 +192,9 @@ def index():
         if len(leaderboard) > 1:
             leaderboard[-1]['caption'] = random.choice(RANK_LAST)
 
-    # 随机文案
     praised = [dict(c) | {'praise': random.choice(CHECKIN_PRAISE)} for c in today_checkins]
     taunted = [dict(u) | {'taunt': random.choice(NOT_CHECKIN_TAUNT)} for u in not_checked]
 
-    # 紧迫感横幅：当前用户未打卡但已有人打卡
     urgency = None
     if not my_checkin and today_checkins:
         first_name = today_checkins[0]['username']
@@ -211,52 +224,46 @@ def checkin():
         ext = file.filename.rsplit('.', 1)[1].lower()
         filename = f"{uuid.uuid4().hex}.{ext}"
         image_path = upload_to_oss(file.stream, filename)
-    db = get_db()
     try:
-        db.execute(
-            'INSERT INTO checkins (user_id, date, note, image_path, tags) VALUES (?, ?, ?, ?, ?)',
+        execute(
+            'INSERT INTO checkins (user_id, date, note, image_path, tags) VALUES (%s, %s, %s, %s, %s)',
             (session['user_id'], today, note, image_path, tags)
         )
-        db.commit()
         flash('打卡成功！继续保持 💪', 'success')
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         flash('今天已经打过卡了', 'warning')
-    finally:
-        db.close()
     return redirect(url_for('index'))
 
 
 @app.route('/calendar')
 @login_required
 def calendar_view():
-    year = request.args.get('year', date.today().year, type=int)
+    year  = request.args.get('year',  date.today().year,  type=int)
     month = request.args.get('month', date.today().month, type=int)
     if month < 1:
         month, year = 12, year - 1
     elif month > 12:
         month, year = 1, year + 1
-    db = get_db()
-    rows = db.execute(
-        "SELECT date, tags FROM checkins WHERE user_id = ? AND date LIKE ?",
+
+    rows = query(
+        "SELECT date, tags FROM checkins WHERE user_id = %s AND date LIKE %s",
         (session['user_id'], f'{year}-{month:02d}-%')
-    ).fetchall()
-    db.close()
+    )
     checked_days = {int(r['date'].split('-')[2]) for r in rows}
     day_tags = {int(r['date'].split('-')[2]): [t for t in (r['tags'] or '').split(',') if t]
                 for r in rows}
     month_matrix = cal_module.monthcalendar(year, month)
     streak = get_streak(session['user_id'])
-    total_db = get_db()
-    total = total_db.execute(
-        'SELECT COUNT(*) as cnt FROM checkins WHERE user_id = ?',
-        (session['user_id'],)
-    ).fetchone()['cnt']
-    total_db.close()
+    total_row = query(
+        'SELECT COUNT(*) as cnt FROM checkins WHERE user_id = %s',
+        (session['user_id'],), one=True
+    )
+    total = total_row['cnt'] if total_row else 0
     month_name = cal_module.month_name[month]
     prev_month = month - 1 if month > 1 else 12
-    prev_year = year if month > 1 else year - 1
+    prev_year  = year if month > 1 else year - 1
     next_month = month + 1 if month < 12 else 1
-    next_year = year if month < 12 else year + 1
+    next_year  = year if month < 12 else year + 1
     return render_template('calendar.html',
                            year=year, month=month, month_name=month_name,
                            month_matrix=month_matrix,
@@ -273,26 +280,22 @@ def register():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password']
-        invite = request.form.get('invite_code', '').strip()
+        invite   = request.form.get('invite_code', '').strip()
         if not username or not password:
             flash('请填写用户名和密码', 'error')
             return render_template('register.html')
         if invite not in INVITE_CODES:
             flash('邀请码错误，你是怎么知道这里的？ 👀', 'error')
             return render_template('register.html')
-        db = get_db()
         try:
-            db.execute(
-                'INSERT INTO users (username, password) VALUES (?, ?)',
+            execute(
+                'INSERT INTO users (username, password) VALUES (%s, %s)',
                 (username, generate_password_hash(password, method='pbkdf2:sha256'))
             )
-            db.commit()
             flash('注册成功，请登录', 'success')
             return redirect(url_for('login'))
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             flash('用户名已存在', 'error')
-        finally:
-            db.close()
     return render_template('register.html')
 
 
@@ -301,9 +304,7 @@ def login():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password']
-        db = get_db()
-        user = db.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-        db.close()
+        user = query('SELECT * FROM users WHERE username = %s', (username,), one=True)
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['username'] = user['username']
@@ -318,7 +319,6 @@ def logout():
     return redirect(url_for('login'))
 
 
-os.makedirs('static/uploads', exist_ok=True)
 init_db()
 
 if __name__ == '__main__':
