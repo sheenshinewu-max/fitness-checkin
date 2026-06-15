@@ -48,7 +48,7 @@ RANK_LAST = [
 ]
 
 app = Flask(__name__)
-app.secret_key = 'fitness-checkin-secret-2026'
+app.secret_key = os.environ.get('SECRET_KEY', 'fitness-checkin-secret-2026')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
