@@ -52,6 +52,10 @@ RANK_LAST = [
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'fitness-checkin-secret-2026')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -432,6 +436,7 @@ def login():
         password = request.form['password']
         user = query('SELECT * FROM users WHERE username = %s', (username,), one=True)
         if user and check_password_hash(user['password'], password):
+            session.permanent = True
             session['user_id'] = user['id']
             session['username'] = user['username']
             return redirect(url_for('index'))
