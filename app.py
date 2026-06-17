@@ -10,6 +10,8 @@ import calendar as cal_module
 import functools
 import random
 import oss2
+from PIL import Image
+import io
 
 CHECKIN_PRAISE = [
     "卷王在此 👑", "肌肉猛男已就位 💪", "今日份卷已完成 ✅",
@@ -197,6 +199,20 @@ def get_streak(user_id, start_date=None, end_date=None):
     return streak
 
 
+# ── Image processing ─────────────────────────────────────────────────────────
+
+def compress_image(file_stream, max_px=1920, quality=85):
+    img = Image.open(file_stream)
+    if img.mode not in ('RGB', 'RGBA'):
+        img = img.convert('RGB')
+    img.thumbnail((max_px, max_px), Image.LANCZOS)
+    buf = io.BytesIO()
+    fmt = 'JPEG' if img.mode == 'RGB' else 'PNG'
+    img.save(buf, format=fmt, quality=quality, optimize=True)
+    buf.seek(0)
+    return buf, fmt.lower()
+
+
 # ── OSS ──────────────────────────────────────────────────────────────────────
 
 def upload_to_oss(file_stream, filename):
@@ -301,8 +317,8 @@ def checkin():
     image_path = None
     file = request.files.get('image')
     if file and file.filename and allowed_file(file.filename):
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        image_path = upload_to_oss(file.stream, f"{uuid.uuid4().hex}.{ext}")
+        buf, fmt = compress_image(file.stream)
+        image_path = upload_to_oss(buf, f"{uuid.uuid4().hex}.{fmt}")
     try:
         execute(
             'INSERT INTO checkins (user_id, date, note, image_path, tags) VALUES (%s, %s, %s, %s, %s)',
